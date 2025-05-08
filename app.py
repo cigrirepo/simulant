@@ -380,7 +380,7 @@ def main():
         tor_fig = tornado_chart(tor_df)
         st.plotly_chart(tor_fig, use_container_width=True)
 
-              st.markdown(
+    st.markdown(
             f"**VaR (5%):** ${var:,.2f}   "
             f"**CVaR:** ${cvar:,.2f}   "
             f"**P(NPV<0):** {(npv_arr < 0).mean() * 100:.2f}%"
