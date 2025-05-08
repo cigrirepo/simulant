@@ -13,7 +13,7 @@ import openai
 from fpdf import FPDF
 
 # ── Page Configuration ────────────────────────────────────────────────────────
-st.set_page_config(page_title="RiskSim360", layout="wide")
+st.set_page_config(page_title="Simulant", layout="wide")
 
 
 def init_openai():
