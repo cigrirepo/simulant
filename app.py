@@ -10,20 +10,16 @@ import scipy.stats as stats
 from scipy.linalg import cholesky
 import plotly.express as px
 import openai
-from openai import OpenAI
 from fpdf import FPDF
 
 # ── Page Configuration ────────────────────────────────────────────────────────
 st.set_page_config(page_title="Simulant", layout="wide")
 
-# ── OpenAI Client Initialization ─────────────────────────────────────────────
-client: OpenAI | None = None
 
 def init_openai():
     """
-    Initialize OpenAI client from env or Streamlit secrets.
+    Initialize OpenAI API key from env or Streamlit secrets.
     """
-    global client
     key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     if not key:
         st.error(
@@ -31,8 +27,8 @@ def init_openai():
             "Set OPENAI_API_KEY in environment or in Streamlit secrets."
         )
     else:
-        # instantiate the v1 client
-        client = OpenAI(api_key=key)
+        openai.api_key = key
+
 
 init_openai()
 
@@ -41,6 +37,7 @@ if "scenarios" not in st.session_state:
     st.session_state["scenarios"] = {}
 if "parsed_df" not in st.session_state:
     st.session_state["parsed_df"] = None
+
 
 # ── Helper Functions ──────────────────────────────────────────────────────────
 def parse_assumptions_df(df: pd.DataFrame) -> list[dict]:
@@ -61,6 +58,7 @@ def parse_assumptions_df(df: pd.DataFrame) -> list[dict]:
         })
     return assumptions
 
+
 def apply_correlation(n_sims: int, assumptions: list, corr_matrix: np.ndarray) -> np.ndarray:
     """
     Generate correlated standard normals via Cholesky decomposition.
@@ -68,6 +66,7 @@ def apply_correlation(n_sims: int, assumptions: list, corr_matrix: np.ndarray) -
     L = cholesky(corr_matrix, lower=True)
     z = np.random.standard_normal((n_sims, len(assumptions)))
     return z @ L.T
+
 
 def sample_from_copula(corr_normals: np.ndarray, assumptions: list) -> np.ndarray:
     """
@@ -93,6 +92,7 @@ def sample_from_copula(corr_normals: np.ndarray, assumptions: list) -> np.ndarra
             samples[:, i] = np.nan
 
     return samples
+
 
 def run_monte_carlo(
     assumptions: list[dict],
@@ -128,6 +128,7 @@ def run_monte_carlo(
     cols = [a["driver"] for a in assumptions]
     return pd.DataFrame(sims, columns=cols)
 
+
 def calculate_npv(
     sim_df: pd.DataFrame,
     cashflow_cols: list[str],
@@ -140,6 +141,7 @@ def calculate_npv(
     pv = sim_df[cashflow_cols].values / ((1 + discount_rate) ** periods)
     return pv.sum(axis=1)
 
+
 def calculate_var_cvar(npv_array: np.ndarray, alpha: float = 0.05) -> tuple[float, float]:
     """
     Compute Value-at-Risk and Conditional VaR at the alpha level.
@@ -147,6 +149,7 @@ def calculate_var_cvar(npv_array: np.ndarray, alpha: float = 0.05) -> tuple[floa
     var = np.percentile(npv_array, alpha * 100)
     cvar = npv_array[npv_array <= var].mean()
     return var, cvar
+
 
 def tornado_chart(impact_df: pd.DataFrame) -> px.bar:
     """
@@ -159,6 +162,7 @@ def tornado_chart(impact_df: pd.DataFrame) -> px.bar:
         orientation="h",
         title="Tornado Chart: Driver Impacts on NPV",
     )
+
 
 def generate_risk_mermaid(drivers: list[str]) -> str:
     """
@@ -175,19 +179,17 @@ def generate_risk_mermaid(drivers: list[str]) -> str:
         + "\n```"
     )
 
+
 def generate_narrative(findings: dict) -> str:
     """
-    Use the v1 OpenAI client to produce a concise executive summary from findings.
+    Use OpenAI to produce a concise executive summary from findings, with error handling.
     """
     prompt = (
         "Write a concise executive summary of the following risk analysis results:\n"
         + json.dumps(findings, indent=2)
     )
-    if client is None:
-        st.error("OpenAI client not initialized.")
-        return ""
     try:
-        resp = client.chat.completions.create(
+        resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
@@ -199,6 +201,7 @@ def generate_narrative(findings: dict) -> str:
         return ""
     m = re.search(r"```(?:json)?(.*?)```", text, re.S)
     return m.group(1).strip() if m else text
+
 
 def export_pdf(
     hist_fig: px.bar,
@@ -242,6 +245,7 @@ def export_pdf(
                 file_name="Simulant_Report.pdf", mime="application/pdf"
             )
 
+
 def export_excel(
     sim_df: pd.DataFrame,
     npv_array: np.ndarray,
@@ -266,52 +270,45 @@ def export_excel(
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
+
 # ── Main App ───────────────────────────────────────────────────────────────────
 def main():
     st.title("Simulant: Monte Carlo Risk Simulator")
     st.sidebar.header("Inputs & Scenario Manager")
 
     # -- Structured Assumptions Upload --
-    uploaded = st.sidebar.file_uploader(
-        "Upload Assumptions (CSV/XLSX)", type=["csv", "xlsx"]
-    )
+    uploaded = st.sidebar.file_uploader("Upload Assumptions (CSV/XLSX)", type=["csv","xlsx"])
     df_upload = None
     if uploaded:
         try:
-            df_upload = (pd.read_csv(uploaded)
-                         if uploaded.name.lower().endswith(".csv")
+            df_upload = (pd.read_csv(uploaded) if uploaded.name.lower().endswith(".csv")
                          else pd.read_excel(uploaded))
             st.sidebar.success("Assumptions file loaded.")
         except Exception as e:
             st.sidebar.error(f"Failed to load file: {e}")
 
     # -- Free-Text Parser --
-    free_text = st.sidebar.text_area(
-        "Or paste assumption text...", height=100
-    )
+    free_text = st.sidebar.text_area("Or paste assumption text...", height=100)
     if st.sidebar.button("Parse Free-Text") and free_text:
         prompt_text = "Parse the following financial assumptions into JSON...\n" + free_text
-        if client is None:
-            st.sidebar.error("OpenAI client not initialized.")
-        else:
-            resp = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt_text}],
-                max_tokens=300,
-                temperature=0,
-            )
-            raw = resp.choices[0].message.content.strip()
-            m = re.search(r"```(?:json)?(.*?)```", raw, re.S)
-            jstr = m.group(1).strip() if m else raw
-            try:
-                parsed = json.loads(jstr)
-                df_parsed = pd.json_normalize(parsed)
-                df_parsed.columns = ["Driver", "Distribution", "Param1", "Param2", "Param3"]
-                st.sidebar.success("Parsed assumptions:")
-                st.sidebar.dataframe(df_parsed)
-                st.session_state["parsed_df"] = df_parsed
-            except Exception as e:
-                st.sidebar.error(f"Parsing failed: {e}")
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt_text}],
+            max_tokens=300,
+            temperature=0,
+        )
+        raw = resp.choices[0].message.content.strip()
+        m = re.search(r"```(?:json)?(.*?)```", raw, re.S)
+        jstr = m.group(1).strip() if m else raw
+        try:
+            parsed = json.loads(jstr)
+            df_parsed = pd.json_normalize(parsed)
+            df_parsed.columns = ["Driver", "Distribution", "Param1", "Param2", "Param3"]
+            st.sidebar.success("Parsed assumptions:")
+            st.sidebar.dataframe(df_parsed)
+            st.session_state["parsed_df"] = df_parsed
+        except Exception as e:
+            st.sidebar.error(f"Parsing failed: {e}")
 
     # -- Save Scenario --
     scenario_name = st.sidebar.text_input("Scenario Name")
@@ -326,25 +323,18 @@ def main():
     selected = st.sidebar.selectbox("Select Scenario", scenarios) if scenarios else None
 
     # -- Simulation Settings --
-    n_sims = st.sidebar.number_input(
-        "Number of Simulations", min_value=1000, max_value=100000,
-        value=20000, step=1000
-    )
-    discount_rate = st.sidebar.number_input(
-        "Discount Rate", min_value=0.0, max_value=1.0,
-        value=0.1, step=0.01
-    )
+    n_sims = st.sidebar.number_input("Number of Simulations", min_value=1000,
+                                     max_value=100000, value=20000, step=1000)
+    discount_rate = st.sidebar.number_input("Discount Rate", min_value=0.0,
+                                            max_value=1.0, value=0.1, step=0.01)
 
     # -- Correlation Matrix --
     corr_matrix = None
-    uploaded_corr = st.sidebar.file_uploader(
-        "Upload Correlation Matrix (CSV)", type="csv"
-    )
+    uploaded_corr = st.sidebar.file_uploader("Upload Correlation Matrix (CSV)", type="csv")
     if uploaded_corr:
         try:
             corr_df = pd.read_csv(uploaded_corr, index_col=0)
-            if (corr_df.shape[0] != corr_df.shape[1]
-                    or list(corr_df.columns) != list(corr_df.index)):
+            if corr_df.shape[0] != corr_df.shape[1] or list(corr_df.columns) != list(corr_df.index):
                 raise ValueError("Matrix must be square with matching labels.")
             if np.any(np.linalg.eigvals(corr_df) < 0):
                 raise ValueError("Matrix is not positive semidef.")
@@ -380,7 +370,8 @@ def main():
         tor_fig = tornado_chart(tor_df)
         st.plotly_chart(tor_fig, use_container_width=True)
 
-    st.markdown(
+        # ── Risk Metrics ─────────────────────────────────────────────────────────
+        st.markdown(
             f"**VaR (5%):** ${var:,.2f}   "
             f"**CVaR:** ${cvar:,.2f}   "
             f"**P(NPV<0):** {(npv_arr < 0).mean() * 100:.2f}%"
@@ -446,4 +437,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
