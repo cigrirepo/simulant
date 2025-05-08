@@ -4,6 +4,6 @@ numpy
 scipy
 plotly
 kaleido
-openai>=0.28.0
+openai==0.28.0
 fpdf
 XlsxWriter
