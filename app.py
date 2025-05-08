@@ -221,7 +221,7 @@ def export_pdf(
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, "RiskSim360 Report", ln=True)
+        pdf.cell(0, 10, "Simulant Report", ln=True)
         pdf.ln(5)
 
         pdf.set_font("Arial", size=12)
@@ -236,13 +236,13 @@ def export_pdf(
         pdf.ln(5)
         pdf.image(tpath, w=180)
 
-        out_path = os.path.join(tmpdir, "RiskSim360_Report.pdf")
+        out_path = os.path.join(tmpdir, "Simulant_Report.pdf")
         pdf.output(out_path)
 
         with open(out_path, "rb") as f:
             st.download_button(
                 "📄 Download PDF Report", f,
-                file_name="RiskSim360_Report.pdf", mime="application/pdf"
+                file_name="Simulant_Report.pdf", mime="application/pdf"
             )
 
 
@@ -266,14 +266,14 @@ def export_excel(
         with open(tmp.name, "rb") as f:
             st.download_button(
                 "📊 Download Excel Workbook", f,
-                file_name="RiskSim360_Output.xlsx",
+                file_name="Simulant_Output.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
 
 # ── Main App ───────────────────────────────────────────────────────────────────
 def main():
-    st.title("RiskSim360: Monte Carlo Risk Simulator")
+    st.title("Simulant: Monte Carlo Risk Simulator")
     st.sidebar.header("Inputs & Scenario Manager")
 
     # -- Structured Assumptions Upload --
