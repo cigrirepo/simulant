@@ -380,4 +380,70 @@ def main():
         tor_fig = tornado_chart(tor_df)
         st.plotly_chart(tor_fig, use_container_width=True)
 
+              st.markdown(
+            f"**VaR (5%):** ${var:,.2f}   "
+            f"**CVaR:** ${cvar:,.2f}   "
+            f"**P(NPV<0):** {(npv_arr < 0).mean() * 100:.2f}%"
+        )
+
+        st.markdown("### Risk Workflow Diagram")
+        st.code(generate_risk_mermaid(drivers), language="markdown")
+
+        # ── AI Narrative ────────────────────────────────────────────────────────
+        if st.sidebar.button("Generate AI Narrative"):
+            findings = {
+                "Scenario": selected,
+                "Mean NPV": round(base_npv, 2),
+                "Std Dev": round(npv_arr.std(), 2),
+                "VaR(5%)": round(var, 2),
+                "CVaR": round(cvar, 2),
+                "P(NPV<0)": f"{(npv_arr < 0).mean() * 100:.2f}%"
+            }
+            with st.spinner("Generating AI narrative..."):
+                narrative = generate_narrative(findings)
+            if narrative:
+                st.subheader("Executive Summary")
+                st.write(narrative)
+
+        # ── What-If Sliders ─────────────────────────────────────────────────────
+        st.markdown("### 🔁 Re-run With Adjusted Inputs")
+        adj_vals = {}
+        for d in drivers:
+            m, s = sim_df[d].mean(), sim_df[d].std()
+            if s > 0:
+                adj_vals[d] = st.slider(
+                    d,
+                    float(m - 2 * s),
+                    float(m + 2 * s),
+                    float(m),
+                    step=float(s / 10),
+                )
+            else:
+                adj_vals[d] = st.number_input(f"{d} (constant)", value=float(m))
+        adj_df = pd.DataFrame([adj_vals])
+        adj_npv = calculate_npv(adj_df, drivers, discount_rate)[0]
         st.markdown(
+            f"**Adjusted NPV:** ${adj_npv:,.2f}   **Δ:** ${adj_npv - base_npv:,.2f}"
+        )
+
+        # ── Export Results ──────────────────────────────────────────────────────
+        st.markdown("### Export Results")
+        summary_dict = {
+            "Mean NPV": f"${base_npv:,.2f}",
+            "Std Dev": f"${npv_arr.std():,.2f}",
+            "VaR(5%)": f"${var:,.2f}",
+            "CVaR": f"${cvar:,.2f}",
+            "P(NPV<0)": f"{(npv_arr < 0).mean() * 100:.2f}%"
+        }
+        export_pdf(
+            histfig,
+            tor_fig,
+            narrative if "narrative" in locals() else "",
+            summary_dict,
+        )
+        export_excel(sim_df, npv_arr, df_assump)
+
+
+if __name__ == "__main__":
+    main()
+
